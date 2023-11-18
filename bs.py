@@ -10,10 +10,16 @@ SHP_FILE_PATH = 'shp/obec_0.shp'
 DISTRICT_NAME = 'Banská Štiavnica'
 COLUMN_NAME = 'Podiel poľnohosp. pôdy z celkovej plochy (%)'
 NUM_CLASSES = 5
-COLOR_MAP = plt.cm.viridis
+COLOR_MAP = plt.colormaps['viridis']
 OUTPUT_FILE = 'mapa.png'
 MAP_TITLE = 'Podiel Poľnohospodárskej Pôdy v Obciach Okresu Banská Štiavnica'
 LEGEND_TITLE = 'Legenda'
+
+# Border styles for the map
+MUNICIPALITY_BORDER_COLOR = 'black'
+MUNICIPALITY_BORDER_WIDTH = 1
+DISTRICT_BORDER_COLOR = 'red'
+DISTRICT_BORDER_WIDTH = 2
 
 def load_data(csv_file_path, shp_file_path):
     """
@@ -93,8 +99,10 @@ def create_legend_elements(num_classes, quantiles, cmap):
     colors = [cmap(sample) for sample in color_samples]
     quantile_labels = [f'{quantiles.iloc[i]:.1f}% - {quantiles.iloc[i + 1]:.1f}' for i in range(num_classes)]
     legend_elements = [plt.Rectangle((0, 0), 1, 1, color=c, label=l) for c, l in zip(colors, quantile_labels)]
-    legend_elements.append(plt.Line2D([0], [0], color='black', lw=1, label='Hranica obce'))
-    legend_elements.append(plt.Line2D([0], [0], color='red', lw=2, label='Hranica okresu'))
+    legend_elements.append(
+        plt.Line2D([0], [0], color=MUNICIPALITY_BORDER_COLOR, lw=MUNICIPALITY_BORDER_WIDTH, label='Hranica obce'))
+    legend_elements.append(
+        plt.Line2D([0], [0], color=DISTRICT_BORDER_COLOR, lw=DISTRICT_BORDER_WIDTH, label='Hranica okresu'))
     return legend_elements
 
 def setup_plot():
@@ -103,7 +111,7 @@ def setup_plot():
     ax.set_axis_off()
     return fig, ax
 
-def plot_map(merged_data, classified_data, quantiles, num_classes):
+def plot_map(merged_data, classified_data, quantiles):
     """
     Plots the map with the classified data.
 
@@ -111,11 +119,11 @@ def plot_map(merged_data, classified_data, quantiles, num_classes):
         merged_data (GeoDataFrame): Merged shapefile and CSV data.
         classified_data (Series): Classified data.
         quantiles (Series): Quantile values.
-        num_classes (Number): Number of classes
     """
     fig, ax = setup_plot()
     cmap = COLOR_MAP
-    merged_data.assign(cl=classified_data).plot(column='cl', cmap=cmap, linewidth=0.8, ax=ax, edgecolor='0.8')
+    merged_data.assign(cl=classified_data).plot(column='cl', cmap=cmap, linewidth=MUNICIPALITY_BORDER_WIDTH, ax=ax,
+                                                edgecolor=MUNICIPALITY_BORDER_COLOR)
     add_map_features(merged_data, ax)
     ax.legend(handles=create_legend_elements(NUM_CLASSES, quantiles, cmap), title=LEGEND_TITLE, loc='upper left')
     plt.tight_layout()
