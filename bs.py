@@ -4,14 +4,16 @@ import matplotlib.pyplot as plt
 import matplotlib.patheffects as PathEffects
 import numpy as np
 
-# Constants and configurations
+# Constants and Configurations
 CSV_FILE_PATH = 'data.csv'
 SHP_FILE_PATH = 'shp/obec_0.shp'
 DISTRICT_NAME = 'Banská Štiavnica'
 COLUMN_NAME = 'Podiel poľnohosp. pôdy z celkovej plochy (%)'
 NUM_CLASSES = 5
-COLOR_MAP = plt.colormaps['viridis']
+COLOR_MAP = plt.cm.viridis
 OUTPUT_FILE = 'mapa.png'
+MAP_TITLE = 'Podiel Poľnohospodárskej Pôdy v Obciach Okresu Banská Štiavnica'
+LEGEND_TITLE = 'Legenda'
 
 def load_data(csv_file_path, shp_file_path):
     """
@@ -87,25 +89,19 @@ def classify_data(merged_data, column_name, num_classes):
     return classified_data, quantiles
 
 def create_legend_elements(num_classes, quantiles, cmap):
-    """
-    Creates legend elements for the map.
-    """
-    # Use linspace to get evenly spaced values in [0, 1] for color sampling
     color_samples = np.linspace(0, 1, num_classes)
-
-    # Sample colors from the colormap using these normalized values
     colors = [cmap(sample) for sample in color_samples]
-
-    # Create quantile labels
-    quantile_labels = [f'{quantiles.iloc[i]:.1f} - {quantiles.iloc[i + 1]:.1f}' for i in range(num_classes)]
-
-    # Create legend elements
+    quantile_labels = [f'{quantiles.iloc[i]:.1f}% - {quantiles.iloc[i + 1]:.1f}' for i in range(num_classes)]
     legend_elements = [plt.Rectangle((0, 0), 1, 1, color=c, label=l) for c, l in zip(colors, quantile_labels)]
-    legend_elements.extend([
-        plt.Line2D([0], [0], color='black', lw=1, label='Hranica obce'),
-        plt.Line2D([0], [0], color='red', lw=2, label='Hranica okresu')
-    ])
+    legend_elements.append(plt.Line2D([0], [0], color='black', lw=1, label='Hranica obce'))
+    legend_elements.append(plt.Line2D([0], [0], color='red', lw=2, label='Hranica okresu'))
     return legend_elements
+
+def setup_plot():
+    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+    ax.set_title(MAP_TITLE)
+    ax.set_axis_off()
+    return fig, ax
 
 def plot_map(merged_data, classified_data, quantiles, num_classes):
     """
@@ -117,18 +113,13 @@ def plot_map(merged_data, classified_data, quantiles, num_classes):
         quantiles (Series): Quantile values.
         num_classes (Number): Number of classes
     """
-    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+    fig, ax = setup_plot()
     cmap = COLOR_MAP
     merged_data.assign(cl=classified_data).plot(column='cl', cmap=cmap, linewidth=0.8, ax=ax, edgecolor='0.8')
-
     add_map_features(merged_data, ax)
-
-    ax.legend(handles=create_legend_elements(num_classes, quantiles, cmap), title="Legenda", loc='upper left')
-    ax.set_title('Podiel poľnohospodárskej pôdy v obciach okresu Banská Štiavnica')
-    ax.set_axis_off()
-
+    ax.legend(handles=create_legend_elements(NUM_CLASSES, quantiles, cmap), title=LEGEND_TITLE, loc='upper left')
     plt.tight_layout()
-    plt.savefig('mapa.png', dpi=300, bbox_inches='tight', pad_inches=0.1)
+    plt.savefig(OUTPUT_FILE, dpi=300, bbox_inches='tight', pad_inches=0.1)
 
 def add_map_features(merged_data, ax):
     """
@@ -145,12 +136,10 @@ def add_map_features(merged_data, ax):
     for idx, row in merged_data.iterrows():
         representative_point = row['geometry'].representative_point()
         ax.annotate(text=row['NM4'], xy=(representative_point.x, representative_point.y), **text_properties)
-
-    district_boundary = merged_data.dissolve().boundary
-    district_boundary.plot(ax=ax, edgecolor='red', linewidth=2)
+    merged_data.dissolve().boundary.plot(ax=ax, edgecolor='red', linewidth=2)
 
 # Main execution
 csv_data, shp_data = load_data(CSV_FILE_PATH, SHP_FILE_PATH)
 merged_data = merge_datasets(shp_data, csv_data, DISTRICT_NAME)
 classified_data, quantiles = classify_data(merged_data, COLUMN_NAME, NUM_CLASSES)
-plot_map(merged_data, classified_data, quantiles, NUM_CLASSES)
+plot_map(merged_data, classified_data, quantiles)
