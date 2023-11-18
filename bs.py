@@ -129,6 +129,7 @@ def plot_map(merged_data, classified_data, quantiles):
     plt.tight_layout()
     plt.savefig(OUTPUT_FILE, dpi=300, bbox_inches='tight', pad_inches=0.1)
 
+
 def add_map_features(merged_data, ax):
     """
     Adds additional features to the map, such as municipality names and district boundary.
@@ -137,13 +138,23 @@ def add_map_features(merged_data, ax):
         merged_data (GeoDataFrame): Merged shapefile and CSV data.
         ax (matplotlib.axes.Axes): Matplotlib axes object to plot on.
     """
-    text_properties = {
-        'fontsize': 9, 'color': 'white', 'ha': 'center', 'va': 'center', 'weight': 'bold',
-        'path_effects': [PathEffects.withStroke(linewidth=1.5, foreground='black')]
-    }
     for idx, row in merged_data.iterrows():
+        # Calculate the centroid of the polygon
         representative_point = row['geometry'].representative_point()
+
+        # Adjust font size based on the area of the municipality
+        area = row['geometry'].area
+        font_size = max(min(np.sqrt(area) / 1000, 12), 6)  # Adjust these values as needed
+
+        text_properties = {
+            'fontsize': font_size, 'color': 'white', 'ha': 'center', 'va': 'center', 'weight': 'bold',
+            'path_effects': [PathEffects.withStroke(linewidth=1.5, foreground='black')]
+        }
+
+        # Place the text at the centroid position
         ax.annotate(text=row['NM4'], xy=(representative_point.x, representative_point.y), **text_properties)
+
+    # Plot the district boundary
     merged_data.dissolve().boundary.plot(ax=ax, edgecolor='red', linewidth=2)
 
 # Main execution
