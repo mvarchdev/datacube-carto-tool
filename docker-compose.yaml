@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  geopandas-app:
+    build: .
+    working_dir: /usr/src/app/
+    volumes:
+      - .:/usr/src/app/
+    command: python ./bs.py
