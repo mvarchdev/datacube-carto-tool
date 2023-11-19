@@ -19,7 +19,7 @@ MAP_TITLE = 'Podiel Poľnohospodárskej Pôdy v Obciach Okresu Banská Štiavnic
 LEGEND_TITLE = 'Legenda'
 
 CKAN_DISTRICT_URL = 'https://data.gov.sk/api/action/datastore_search?resource_id=1829233e-53f3-4c6a-9ad6-b27f33ec7550'
-CKAN_MUNICIPALITY_BASE_URL = 'https://data.gov.sk/api/action/datastore_search_sql?sql='
+CKAN_MUNICIPALITY_BASE_URL = 'https://data.gov.sk/api/action/datastore_search_sql'
 DATA_CUBE_URL = 'https://data.statistics.sk/api/SendReport.php?cubeName=pl5001rr&lang=en&fileType=json'
 SHP_ZIP_URL = 'https://www.geoportal.sk/files/zbgis/na_stiahnutie/shp/ah_shp_0.zip'
 
@@ -156,48 +156,106 @@ def add_map_features(merged_data, ax):
 
 # Function to fetch district list from CKAN
 def fetch_districts():
-    response = requests.get(CKAN_DISTRICT_URL)
-    data = response.json()
-    districts = pd.DataFrame(data['result']['records'])
-    return districts
+    """
+    Fetch district list from CKAN.
+
+    Returns:
+        DataFrame: District data.
+    """
+    try:
+        response = requests.get(CKAN_DISTRICT_URL)
+        response.raise_for_status()  # Raise an exception for HTTP errors
+        data = response.json()
+        return pd.DataFrame(data['result']['records'])
+    except requests.RequestException as e:
+        print(f"Request failed: {e}")
+    except ValueError:
+        print("Invalid JSON response")
+
 
 # Function to fetch municipalities for a selected district
 def fetch_municipalities(district_id):
-    query = f"SELECT * from \"15262453-4a0f-4cce-a9e4-7709e135e4b8\" WHERE \"countyIdentifier\"='{district_id}'"
+    """
+    Fetch municipalities for a selected district.
 
-    response = requests.get(f"{CKAN_MUNICIPALITY_BASE_URL}{query}")
-    data = response.json()
-    municipalities = pd.DataFrame(data['result']['records'])
-    return municipalities
+    Args:
+        district_id (str): The district identifier.
+
+    Returns:
+        DataFrame: Municipality data.
+    """
+    try:
+        params = {
+            'sql': f"SELECT * from \"15262453-4a0f-4cce-a9e4-7709e135e4b8\" WHERE \"countyIdentifier\"='{district_id}'"}
+        response = requests.get(CKAN_MUNICIPALITY_BASE_URL, params=params)
+        response.raise_for_status()
+        data = response.json()
+        return pd.DataFrame(data['result']['records'])
+    except requests.RequestException as e:
+        print(f"Request failed: {e}")
+    except ValueError:
+        print("Invalid JSON response")
+
 
 # Function to fetch agricultural land data from datacube
 def fetch_agri_data():
-    response = requests.get(DATA_CUBE_URL)
-    data = response.json()
-    agri_data = pd.DataFrame(data['data'])
-    return agri_data
+    """
+    Fetch agricultural land data from datacube.
+
+    Returns:
+        DataFrame: Agricultural data.
+    """
+    try:
+        response = requests.get(DATA_CUBE_URL)
+        response.raise_for_status()
+        data = response.json()
+        print(data.keys())
+        exit()
+        return pd.DataFrame(data)
+    except requests.RequestException as e:
+        print(f"Request failed: {e}")
+    except ValueError:
+        print("Invalid JSON response")
+
 
 # Function to download and unzip SHP files
 def download_and_unzip_shp(url):
-    response = requests.get(url)
-    z = zipfile.ZipFile(io.BytesIO(response.content))
-    z.extractall(path="shp/")
+    """
+    Download and unzip SHP files.
+
+    Args:
+        url (str): URL of the zip file.
+    """
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        with zipfile.ZipFile(io.BytesIO(response.content)) as z:
+            z.extractall(path="shp/")
+    except requests.RequestException as e:
+        print(f"Request failed: {e}")
+
 
 # Main Execution
 districts = fetch_districts()
-print("Available Districts: \n", districts['countyName'].to_string())
-district_index = int(input("Zadaj požadovaný okres:"))
+if districts is not None:
+    print("Available Districts: \n", districts['countyName'].to_string())
+    try:
+        district_index = int(input("Enter desired district index: "))
+        selected_district = districts.iloc[district_index]
+        print("Selected district: ", selected_district['countyName'])
 
-print("Selected district: ", districts['countyName'][district_index])
+        municipalities = fetch_municipalities(selected_district['objectId'])
+        if municipalities is not None:
+            print(municipalities['municipalityName'].to_string())
+    except ValueError:
+        print("Invalid input. Please enter a valid integer.")
+    except IndexError:
+        print("Index out of range. Please enter a valid district index.")
 
-selected_district_id = districts['objectId'][district_index]
 
-municipalities = fetch_municipalities(selected_district_id)
-print(municipalities['municipalityName'].to_string())
-
-exit()
 agri_data = fetch_agri_data()
-
+print(agri_data)
+exit()
 # Download and unzip SHP files
 download_and_unzip_shp(SHP_ZIP_URL)
 
