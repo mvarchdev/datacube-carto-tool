@@ -197,27 +197,6 @@ def fetch_municipalities(district_id):
         print("Invalid JSON response")
 
 
-# Function to fetch agricultural land data from datacube
-def fetch_agri_data():
-    """
-    Fetch agricultural land data from datacube.
-
-    Returns:
-        DataFrame: Agricultural data.
-    """
-    try:
-        response = requests.get(DATA_CUBE_URL)
-        response.raise_for_status()
-        data = response.json()
-        print(data.keys())
-        exit()
-        return pd.DataFrame(data)
-    except requests.RequestException as e:
-        print(f"Request failed: {e}")
-    except ValueError:
-        print("Invalid JSON response")
-
-
 # Function to download and unzip SHP files
 def download_and_unzip_shp(url):
     """
@@ -252,10 +231,6 @@ if districts is not None:
     except IndexError:
         print("Index out of range. Please enter a valid district index.")
 
-
-agri_data = fetch_agri_data()
-print(agri_data)
-exit()
 # Download and unzip SHP files
 download_and_unzip_shp(SHP_ZIP_URL)
 

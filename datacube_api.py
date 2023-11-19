@@ -21,7 +21,7 @@ class DatacubeAPI:
         response = self._make_request(endpoint)
         return response.json() if response else None
 
-    def get_table_dimensions(self, cube_code, dim_code, language='sk'):
+    def get_table_dimensions(self, cube_code, dim_code, language='en'):
         endpoint = f"dimension/{cube_code}/{dim_code}?lang={language}"
         response = self._make_request(endpoint)
         return response.json() if response else None
@@ -47,18 +47,47 @@ class DatacubeAPI:
             }
         return None
 
-# Usage Example
+def search_city_get_code(api, city_name):
+    nuts15_details = api.get_table_dimensions('pl5001rr', 'nuts15', 'sk')
+    for code, name in nuts15_details['category']['label'].items():
+        if city_name.lower() in name.lower():
+            return code
+    return None
+
+def get_latest_year(api):
+    year_details = api.get_table_dimensions('pl5001rr', 'pl5001rr_rok', 'en')
+    latest_year = max(year_details['category']['index'], key=int)
+    return latest_year
+
+def get_all_indicators(api):
+    indicators = api.get_table_dimensions('pl5001rr', 'pl5001rr_ukaz', 'en')
+    return indicators['category']['label']
+
+def get_city_data(api, city_code, year, indicators):
+    data = {}
+    for indicator_code, indicator_name in indicators.items():
+        response = api.get_data('pl5001rr', city_code, year, indicator_code)
+        if response and 'value' in response:
+            data[indicator_name] = response['value'][0]
+    return data
+
+# Initialize API
 api = DatacubeAPI()
-table_overview = api.get_table_overview()
 
-# Get dimension details
-dimension_info = api.get_table_dimensions('pl5001rr', 'pl5001rr_ukaz')
+# Search for city and get code
+city_name = "Sobrance"  # Replace with the city you are searching for
+city_code = search_city_get_code(api, city_name)
 
-# Get specific data
-data = api.get_data('pl5001rr', 'SK010', '2021', 'U14020')
+if city_code:
+    # Get the latest year and all indicators
+    latest_year = get_latest_year(api)
+    indicators = get_all_indicators(api)
 
-# Get dimension information from a dataset
-dataset_info = api.get_dimension_info(data, 'pl5001rr_ukaz')
+    # Get data for each indicator for the specific city and latest year
+    city_data = get_city_data(api, city_code, latest_year, indicators)
 
-# Print or process the data as needed
-print(dataset_info)
+    # Convert to Pandas DataFrame
+    df = pd.DataFrame([city_data], index=[city_name])
+    print(df.iloc[0])
+else:
+    print(f"City '{city_name}' not found.")
