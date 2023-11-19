@@ -6,6 +6,7 @@ import numpy as np
 import requests
 import zipfile
 import io
+import ckan_api
 
 # Constants and Configurations
 CSV_FILE_PATH = 'data.csv'
@@ -18,9 +19,6 @@ OUTPUT_FILE = 'mapa.png'
 MAP_TITLE = 'Podiel Poľnohospodárskej Pôdy v Obciach Okresu Banská Štiavnica'
 LEGEND_TITLE = 'Legenda'
 
-CKAN_DISTRICT_URL = 'https://data.gov.sk/api/action/datastore_search?resource_id=1829233e-53f3-4c6a-9ad6-b27f33ec7550'
-CKAN_MUNICIPALITY_BASE_URL = 'https://data.gov.sk/api/action/datastore_search_sql'
-DATA_CUBE_URL = 'https://data.statistics.sk/api/SendReport.php?cubeName=pl5001rr&lang=en&fileType=json'
 SHP_ZIP_URL = 'https://www.geoportal.sk/files/zbgis/na_stiahnutie/shp/ah_shp_0.zip'
 
 # Border styles for the map
@@ -154,48 +152,6 @@ def add_map_features(merged_data, ax):
         ax.annotate(text=row['NM4'], xy=(representative_point.x, representative_point.y), **text_properties)
     merged_data.dissolve().boundary.plot(ax=ax, edgecolor='red', linewidth=2)
 
-# Function to fetch district list from CKAN
-def fetch_districts():
-    """
-    Fetch district list from CKAN.
-
-    Returns:
-        DataFrame: District data.
-    """
-    try:
-        response = requests.get(CKAN_DISTRICT_URL)
-        response.raise_for_status()  # Raise an exception for HTTP errors
-        data = response.json()
-        return pd.DataFrame(data['result']['records'])
-    except requests.RequestException as e:
-        print(f"Request failed: {e}")
-    except ValueError:
-        print("Invalid JSON response")
-
-
-# Function to fetch municipalities for a selected district
-def fetch_municipalities(district_id):
-    """
-    Fetch municipalities for a selected district.
-
-    Args:
-        district_id (str): The district identifier.
-
-    Returns:
-        DataFrame: Municipality data.
-    """
-    try:
-        params = {
-            'sql': f"SELECT * from \"15262453-4a0f-4cce-a9e4-7709e135e4b8\" WHERE \"countyIdentifier\"='{district_id}'"}
-        response = requests.get(CKAN_MUNICIPALITY_BASE_URL, params=params)
-        response.raise_for_status()
-        data = response.json()
-        return pd.DataFrame(data['result']['records'])
-    except requests.RequestException as e:
-        print(f"Request failed: {e}")
-    except ValueError:
-        print("Invalid JSON response")
-
 
 # Function to download and unzip SHP files
 def download_and_unzip_shp(url):
@@ -215,7 +171,7 @@ def download_and_unzip_shp(url):
 
 
 # Main Execution
-districts = fetch_districts()
+districts = ckan_api.fetch_districts()
 if districts is not None:
     print("Available Districts: \n", districts['countyName'].to_string())
     try:
