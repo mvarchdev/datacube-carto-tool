@@ -59,27 +59,27 @@ def load_data_from_api(municipality_name, municipality_code=None):
     """
     api_data = datacube_api.get_land_data(municipality_name, municipality_code)
     if api_data is not None:
-        calc_data = {'Podiel poľnohosp. pôdy z celkovej plochy (%)': (
+        calc_data = {COLUMN_NAME: (
             (api_data['Agricultural land in total in m2'] / api_data['Total area of land of municipality-town in m2']) * 100
-        )}
+        ), 'municipalityCode': municipality_code}
         calculated_data_df = pd.DataFrame(data=calc_data, index=[municipality_name])
         return calculated_data_df
     return None
 
-def validate_data(merged_data, csv_data):
+def validate_data(merged_data, land_data):
     """
     Validates that all entries in the CSV are present in the merged data.
 
     Args:
         merged_data (GeoDataFrame): Merged data of shapefile and CSV.
-        csv_data (DataFrame): Original CSV data.
+        land_data (DataFrame): Original CSV data.
 
     Raises:
         ValueError: If there are missing municipalities in the merged data.
     """
-    missing_data = set(csv_data.index) - set(merged_data['NM4'])
+    missing_data = set(land_data['municipalityCode']) - set(merged_data['LAU2_CODE'])
     if missing_data:
-        raise ValueError(f"Missing data for municipalities: {missing_data}")
+        raise ValueError(f"Missing SHP data for municipalities: {missing_data}")
 
 
 def merge_datasets(shp_data, csv_data, district_name):
@@ -177,7 +177,7 @@ shp_api.download_and_unzip_shp(SHP_ZIP_URL)
 if districts is not None:
     print("Available Districts: \n", districts['countyName'].to_string())
     try:
-        district_index = 76#int(input("Enter desired district index: "))
+        district_index = 35#int(input("Enter desired district index: "))
         selected_district = districts.iloc[district_index]
         selected_district_string = selected_district['countyName']
         print("Vybraný okres: ", selected_district_string)

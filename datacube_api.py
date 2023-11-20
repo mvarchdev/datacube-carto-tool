@@ -146,6 +146,7 @@ def get_all_indicators(api):
         logging.error(f"Error fetching indicators: {e}")
     return {}
 
+@memory.cache
 def get_city_data(api, city_code, year, indicators):
     """
     Fetches data for each indicator for a specified city and year.
