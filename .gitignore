@@ -1,2 +1,5 @@
 cache
 shp
+__pycache__
+.idea
+.vagrant
