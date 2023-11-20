@@ -177,7 +177,7 @@ shp_api.download_and_unzip_shp(SHP_ZIP_URL)
 if districts is not None:
     print("Available Districts: \n", districts['countyName'].to_string())
     try:
-        district_index = 75#int(input("Enter desired district index: "))
+        district_index = 76#int(input("Enter desired district index: "))
         selected_district = districts.iloc[district_index]
         selected_district_string = selected_district['countyName']
         print("Vybraný okres: ", selected_district_string)
