@@ -7,6 +7,7 @@ import requests
 import zipfile
 import io
 import ckan_api
+import shp_api
 
 # Constants and Configurations
 CSV_FILE_PATH = 'data.csv'
@@ -153,25 +154,9 @@ def add_map_features(merged_data, ax):
     merged_data.dissolve().boundary.plot(ax=ax, edgecolor='red', linewidth=2)
 
 
-# Function to download and unzip SHP files
-def download_and_unzip_shp(url):
-    """
-    Download and unzip SHP files.
-
-    Args:
-        url (str): URL of the zip file.
-    """
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        with zipfile.ZipFile(io.BytesIO(response.content)) as z:
-            z.extractall(path="shp/")
-    except requests.RequestException as e:
-        print(f"Request failed: {e}")
-
-
 # Main Execution
 districts = ckan_api.fetch_districts()
+shp_api.download_and_unzip_shp(SHP_ZIP_URL)
 if districts is not None:
     print("Available Districts: \n", districts['countyName'].to_string())
     try:
@@ -179,14 +164,10 @@ if districts is not None:
         selected_district = districts.iloc[district_index]
         print("Selected district: ", selected_district['countyName'])
 
-        municipalities = fetch_municipalities(selected_district['objectId'])
+        municipalities = ckan_api.fetch_municipalities(selected_district['objectId'])
         if municipalities is not None:
             print(municipalities['municipalityName'].to_string())
     except ValueError:
         print("Invalid input. Please enter a valid integer.")
     except IndexError:
         print("Index out of range. Please enter a valid district index.")
-
-# Download and unzip SHP files
-download_and_unzip_shp(SHP_ZIP_URL)
-

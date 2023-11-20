@@ -1,13 +1,16 @@
 import requests
 import pandas as pd
 import logging
-from functools import lru_cache
+from joblib import Memory
+
+# Set up caching
+cache_dir = './cache'  # You can change this to a different directory if needed
+memory = Memory(cache_dir, verbose=0)
 
 class DatacubeAPI:
     """
     A Python API wrapper for the Statistical Office of the Slovak Republic's DATAcube database.
     """
-
     BASE_URL = "https://data.statistics.sk/api/v2/"
 
     def __init__(self):
@@ -17,11 +20,9 @@ class DatacubeAPI:
         logging.basicConfig(level=logging.INFO)
         self.session = requests.Session()
 
-    @lru_cache(maxsize=128)
     def _make_request(self, endpoint, params=None):
         """
         Makes a cached HTTP GET request to a specified endpoint.
-
         :param endpoint: The API endpoint to query.
         :param params: Optional parameters for the request.
         :return: The response object or None in case of an error.
@@ -97,7 +98,7 @@ class DatacubeAPI:
             }
         return None
 
-@lru_cache(maxsize=128)
+@memory.cache
 def search_city_get_code(api, city_name):
     """
     Searches for a city by name and returns its code.
@@ -115,7 +116,7 @@ def search_city_get_code(api, city_name):
         logging.error(f"Error searching city code: {e}")
     return None
 
-@lru_cache(maxsize=32)
+@memory.cache
 def get_latest_year(api):
     """
     Retrieves the most recent year available in the dataset.
@@ -130,7 +131,7 @@ def get_latest_year(api):
         logging.error(f"Error fetching latest year: {e}")
     return None
 
-@lru_cache(maxsize=32)
+@memory.cache
 def get_all_indicators(api):
     """
     Retrieves all available indicators from the dataset.
@@ -162,6 +163,7 @@ def get_city_data(api, city_code, year, indicators):
             data[indicator_name] = response['value'][0]
     return data
 
+@memory.cache
 def get_land_data(city_name):
     """
     The main function to execute the API wrapper functionality.

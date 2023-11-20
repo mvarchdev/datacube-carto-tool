@@ -1,11 +1,15 @@
 import requests
-import zipfile
-import io
 import pandas as pd
+from joblib import Memory
+
+# Set up caching
+cache_dir = './cache'  # You can change this to a different directory if needed
+memory = Memory(cache_dir, verbose=0)
 
 CKAN_DISTRICT_URL = 'https://data.gov.sk/api/action/datastore_search?resource_id=1829233e-53f3-4c6a-9ad6-b27f33ec7550'
 CKAN_MUNICIPALITY_BASE_URL = 'https://data.gov.sk/api/action/datastore_search_sql'
 
+@memory.cache
 def fetch_districts():
     """
     Fetch district list from CKAN.
@@ -23,8 +27,7 @@ def fetch_districts():
     except ValueError:
         print("Invalid JSON response")
 
-
-# Function to fetch municipalities for a selected district
+@memory.cache
 def fetch_municipalities(district_id):
     """
     Fetch municipalities for a selected district.
