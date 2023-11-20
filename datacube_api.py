@@ -164,15 +164,16 @@ def get_city_data(api, city_code, year, indicators):
     return data
 
 @memory.cache
-def get_land_data(city_name):
+def get_land_data(city_name, city_code=None):
     """
     The main function to execute the API wrapper functionality.
     """
     # Initialize API
     api = DatacubeAPI()
 
-    # Search for city and get code
-    city_code = search_city_get_code(api, city_name)
+    # Search for city and get code if not present
+    if not city_code:
+        city_code = search_city_get_code(api, city_name)
 
     if city_code:
         # Get the latest year and all indicators
@@ -188,5 +189,3 @@ def get_land_data(city_name):
     else:
         print(f"City '{city_name}' not found.")
         return None
-
-print(get_land_data('Sobrance').iloc[0])

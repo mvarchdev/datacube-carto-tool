@@ -40,7 +40,7 @@ def fetch_municipalities(district_id):
     """
     try:
         params = {
-            'sql': f"SELECT * from \"15262453-4a0f-4cce-a9e4-7709e135e4b8\" WHERE \"countyIdentifier\"='{district_id}'"}
+            'sql': f"SELECT * from \"15262453-4a0f-4cce-a9e4-7709e135e4b8\" WHERE \"countyIdentifier\"='{district_id}' AND \"municipalityCode\" LIKE 'SK%'"}
         response = requests.get(CKAN_MUNICIPALITY_BASE_URL, params=params)
         response.raise_for_status()
         data = response.json()

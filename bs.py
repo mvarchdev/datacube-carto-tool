@@ -8,16 +8,16 @@ import zipfile
 import io
 import ckan_api
 import shp_api
+import datacube_api
 
 # Constants and Configurations
 CSV_FILE_PATH = 'data.csv'
 SHP_FILE_PATH = 'shp/obec_0.shp'
-DISTRICT_NAME = 'Banská Štiavnica'
 COLUMN_NAME = 'Podiel poľnohosp. pôdy z celkovej plochy (%)'
 NUM_CLASSES = 5
 COLOR_MAP = plt.colormaps['viridis']
 OUTPUT_FILE = 'mapa.png'
-MAP_TITLE = 'Podiel Poľnohospodárskej Pôdy v Obciach Okresu Banská Štiavnica'
+MAP_TITLE = 'Podiel Poľnohospodárskej Pôdy v Obciach Okresu'
 LEGEND_TITLE = 'Legenda'
 
 SHP_ZIP_URL = 'https://www.geoportal.sk/files/zbgis/na_stiahnutie/shp/ah_shp_0.zip'
@@ -28,26 +28,43 @@ MUNICIPALITY_BORDER_WIDTH = 1
 DISTRICT_BORDER_COLOR = 'red'
 DISTRICT_BORDER_WIDTH = 2
 
-def load_data(csv_file_path, shp_file_path):
+def load_data(shp_file_path):
     """
-    Loads CSV and shapefile data.
+    Loads shapefile data.
 
     Args:
-        csv_file_path (str): Path to the CSV file.
         shp_file_path (str): Path to the shapefile.
 
     Returns:
-        tuple: Tuple containing the CSV data as a pandas DataFrame and shapefile data as a GeoDataFrame.
+        GeoDataFrame: Shapefile data as a GeoDataFrame.
 
     Raises:
         IOError: If there is an error loading the data.
     """
     try:
-        csv_data = pd.read_csv(csv_file_path)
         shp_data = gpd.read_file(shp_file_path)
     except Exception as e:
         raise IOError(f"Error loading data: {e}")
-    return csv_data, shp_data
+    return shp_data
+
+def load_data_from_api(municipality_name, municipality_code=None):
+    """
+    Loads data for a given municipality using the API.
+
+    Args:
+        municipality_name (str): Name of the municipality.
+
+    Returns:
+        DataFrame: DataFrame containing the data for the municipality.
+    """
+    api_data = datacube_api.get_land_data(municipality_name, municipality_code)
+    if api_data is not None:
+        calc_data = {'Podiel poľnohosp. pôdy z celkovej plochy (%)': (
+            (api_data['Agricultural land in total in m2'] / api_data['Total area of land of municipality-town in m2']) * 100
+        )}
+        calculated_data_df = pd.DataFrame(data=calc_data, index=[municipality_name])
+        return calculated_data_df
+    return None
 
 def validate_data(merged_data, csv_data):
     """
@@ -60,7 +77,7 @@ def validate_data(merged_data, csv_data):
     Raises:
         ValueError: If there are missing municipalities in the merged data.
     """
-    missing_data = set(csv_data['Obec']) - set(merged_data['NM4'])
+    missing_data = set(csv_data.index) - set(merged_data['NM4'])
     if missing_data:
         raise ValueError(f"Missing data for municipalities: {missing_data}")
 
@@ -78,7 +95,7 @@ def merge_datasets(shp_data, csv_data, district_name):
         GeoDataFrame: Merged and filtered data.
     """
     filtered_data = shp_data[shp_data['LAU1'] == district_name]
-    merged_data = pd.merge(filtered_data, csv_data, left_on='NM4', right_on='Obec')
+    merged_data = pd.merge(filtered_data, csv_data, left_on='NM4', right_index=True)
     validate_data(merged_data, csv_data)
     return merged_data
 
@@ -112,13 +129,13 @@ def create_legend_elements(num_classes, quantiles, cmap):
         plt.Line2D([0], [0], color=DISTRICT_BORDER_COLOR, lw=DISTRICT_BORDER_WIDTH, label='Hranica okresu'))
     return legend_elements
 
-def setup_plot():
+def setup_plot(district_name):
     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-    ax.set_title(MAP_TITLE)
+    ax.set_title(MAP_TITLE+' '+district_name)
     ax.set_axis_off()
     return fig, ax
 
-def plot_map(merged_data, classified_data, quantiles):
+def plot_map(merged_data, classified_data, quantiles, district_name):
     """
     Plots the map with the classified data.
 
@@ -127,7 +144,7 @@ def plot_map(merged_data, classified_data, quantiles):
         classified_data (Series): Classified data.
         quantiles (Series): Quantile values.
     """
-    fig, ax = setup_plot()
+    fig, ax = setup_plot(district_name)
     cmap = COLOR_MAP
     merged_data.assign(cl=classified_data).plot(column='cl', cmap=cmap, linewidth=MUNICIPALITY_BORDER_WIDTH, ax=ax,
                                                 edgecolor=MUNICIPALITY_BORDER_COLOR)
@@ -160,14 +177,28 @@ shp_api.download_and_unzip_shp(SHP_ZIP_URL)
 if districts is not None:
     print("Available Districts: \n", districts['countyName'].to_string())
     try:
-        district_index = int(input("Enter desired district index: "))
+        district_index = 75#int(input("Enter desired district index: "))
         selected_district = districts.iloc[district_index]
-        print("Selected district: ", selected_district['countyName'])
+        selected_district_string = selected_district['countyName']
+        print("Vybraný okres: ", selected_district_string)
 
         municipalities = ckan_api.fetch_municipalities(selected_district['objectId'])
         if municipalities is not None:
-            print(municipalities['municipalityName'].to_string())
-    except ValueError:
-        print("Invalid input. Please enter a valid integer.")
-    except IndexError:
-        print("Index out of range. Please enter a valid district index.")
+            print("Obce okresu:\n",municipalities['municipalityName'].to_string())
+            municipalities_land_data = pd.DataFrame()
+            for index, municipality in municipalities.iterrows():
+                municipalityName = municipality['municipalityName']
+                municipalityCode = municipality['municipalityCode']
+                muni_land_data = load_data_from_api(municipalityName, municipalityCode)
+                municipalities_land_data = pd.concat([municipalities_land_data, muni_land_data])
+
+            shp_data = load_data(SHP_FILE_PATH)
+
+            merged_data = merge_datasets(shp_data, municipalities_land_data, selected_district_string)
+            classified_data, quantiles = classify_data(merged_data, COLUMN_NAME, NUM_CLASSES)
+            plot_map(merged_data, classified_data, quantiles, selected_district_string)
+
+    except ValueError as e:
+        print("Invalid input. Please enter a valid integer:", e)
+    except IndexError as e:
+        print("Index out of range. Please enter a valid district index:", e)
