@@ -3,12 +3,12 @@ import pandas as pd
 import logging
 from joblib import Memory
 
-import common_tools
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 
 # Set up caching
 cache_dir = './cache'
 memory = Memory(cache_dir, verbose=0)
-
 
 class DatacubeAPI:
     BASE_URL = "https://data.statistics.sk/api/v2/"
@@ -16,24 +16,18 @@ class DatacubeAPI:
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(DatacubeAPI, cls).__new__(cls)
-            logging.basicConfig(level=logging.INFO)
+            cls._instance = super().__new__(cls)
             cls._instance.session = requests.Session()
         return cls._instance
 
-    @staticmethod
-    def get_instance():
-        """
-        Static access method.
-        """
-        if DatacubeAPI._instance is None:
-            DatacubeAPI()
-        return DatacubeAPI._instance
+    @classmethod
+    def get_instance(cls):
+        return cls.__new__(cls)
 
-    @staticmethod
-    def _make_request(endpoint, params=None):
+    @classmethod
+    def _make_request(cls, endpoint: str, params: dict = None) -> requests.Response:
         try:
-            response = DatacubeAPI._instance.session.get(f"{DatacubeAPI.BASE_URL}{endpoint}", params=params)
+            response = cls.get_instance().session.get(f"{cls.BASE_URL}{endpoint}", params=params)
             response.raise_for_status()
             return response
         except requests.ConnectionError as e:
@@ -45,7 +39,7 @@ class DatacubeAPI:
         return None
 
     @staticmethod
-    def _parse_json_response(response):
+    def _parse_json_response(response: requests.Response) -> dict:
         try:
             return response.json()
         except ValueError:
@@ -78,7 +72,6 @@ class DatacubeAPI:
 
     def get_data(self, cube_code, region_code, year, indicator_code, lang='en', file_type='json'):
         endpoint = f"dataset/{cube_code}/{region_code}/{year}/{indicator_code}?lang={lang}&type={file_type}"
-        print(endpoint)
         response = self._make_request(endpoint)
         if response:
             if file_type == 'json':
@@ -103,7 +96,6 @@ class DatacubeAPI:
                 'categories': details['category'].get('label', {})
             }
         return None
-
 
 @memory.cache
 def search_city_get_code(city_name):
@@ -161,33 +153,57 @@ def get_all_indicators():
 
 @memory.cache
 def get_land_data(cities_string, year, indicators):
-    """
-    Fetches data for each indicator for a specified city and year.
-
-    :param city_code: The code of the city.
-    :param year: The year for which data is requested.
-    :param indicators: A dictionary of indicators to fetch data for.
-    :return: A dictionary with indicator names as keys and corresponding data as values.
-    """
     data = {}
     api = DatacubeAPI.get_instance()
     indicator_string_list = ','.join(indicators)
     response = api.get_data('pl5001rr', cities_string, year, indicator_string_list)
-    print(response)
-    exit()
-    if not response and 'value' in response:
+
+    if not response or 'value' not in response:
+        logging.error("Invalid or empty response in get_land_data")
         return None
+
+    values = response['value']
+    dimensions = response['dimension']
+    indicator_info = dimensions.get('pl5001rr_ukaz', {})
+    city_info = dimensions.get('nuts15', {})
+
+    city_codes = city_info.get('category', {}).get('index', {})
+    indicator_codes = indicator_info.get('category', {}).get('index', {})
+    city_labels = city_info.get('category', {}).get('label', {})
+    indicator_labels = indicator_info.get('category', {}).get('label', {})
+
+    if not city_codes or not indicator_codes:
+        logging.error("Missing or empty indicators or city information in the response")
+        return None
+
+    for i, val in enumerate(values):
+        if val == "None":  # Skip missing values
+            continue
+
+        city_index = i // len(indicator_codes)
+        indicator_index = i % len(indicator_codes)
+
+        city_code = list(city_codes.keys())[city_index]
+        indicator_code = list(indicator_codes.keys())[indicator_index]
+
+        city_name = city_labels.get(city_code, "Unknown City")
+        indicator_name = indicator_labels.get(indicator_code, "Unknown Indicator")
+
+        if city_code not in data:
+            data[city_code] = {'City Name': city_name}
+
+        data[city_code][indicator_name] = val
+
     return data
 
 @memory.cache
-def get_land_data_cities_code(cities_code_list, city_codes=None):
+def get_land_data_cities_code(cities_code_list):
     if not cities_code_list:
         logging.error("City codes are required")
         return None
 
-    # Convert cities to a list if it's a pandas DataFrame or Series
     if isinstance(cities_code_list, (pd.DataFrame, pd.Series)):
-        cities = cities_code_list.tolist()
+        cities_code_list = cities_code_list.tolist()
 
     cities_string = ','.join(cities_code_list)
     latest_year = get_latest_year()
@@ -200,21 +216,19 @@ def get_land_data_cities_code(cities_code_list, city_codes=None):
         logging.error("Failed to fetch indicators")
         return None
 
-    cities_data = get_land_data(cities_string, latest_year, indicators)
-    if cities_data:
-        required_columns = ['Agricultural land in total in m2', 'Total area of land of municipality-town in m2']
-        if not all(column in cities_data for column in required_columns):
-            logging.error("Failed to fetch required columns for all cities land data")
-            return None
-    else:
+    cities_data = get_land_data(cities_string, latest_year, list(indicators.keys()))
+    if not cities_data:
         logging.error("Failed to fetch land data for all cities")
         return None
 
-    print(cities_data)
-    exit()
+    df = pd.DataFrame.from_dict(cities_data, orient='index').reset_index().rename(columns={'index': 'City Code'})
+    required_columns = ['City Name'] + list(indicators.values())
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    if missing_columns:
+        logging.error(f"Missing required columns: {missing_columns}")
+        return None
 
-    return pd.DataFrame(cities_data, index=['City'])
-
+    return df.set_index('City Code')
 
 @memory.cache
 def get_city_codes(cities_name_list):
@@ -246,6 +260,3 @@ def get_city_codes(cities_name_list):
 def get_land_data_cities_name(cities_name_list):
     city_codes_list = get_city_codes(cities_name_list)
     return get_land_data_cities_code(city_codes_list)
-
-test_data = get_land_data_cities_name(['Michalovce','Sobrance'])
-print(test_data.to_string())
