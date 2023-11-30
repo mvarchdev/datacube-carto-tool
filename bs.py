@@ -1,12 +1,10 @@
+import os
+
 import geopandas as gpd
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as PathEffects
 import numpy as np
-import requests
-import zipfile
-import io
-import ckan_api
 import shp_api
 import datacube_api
 
@@ -16,7 +14,7 @@ SHP_FILE_PATH = 'shp/obec_0.shp'
 COLUMN_NAME = 'Podiel poľnohosp. pôdy z celkovej plochy (%)'
 NUM_CLASSES = 5
 COLOR_MAP = plt.colormaps['viridis']
-OUTPUT_FILE = 'mapa.png'
+OUTPUT_FILE = 'mapa'
 MAP_TITLE = 'Podiel Poľnohospodárskej Pôdy v Obciach Okresu'
 LEGEND_TITLE = 'Legenda'
 
@@ -99,7 +97,6 @@ def merge_datasets(shp_data, csv_data, district_name):
     validate_data(merged_data, csv_data)
     return merged_data
 
-
 def classify_data(merged_data, column_name, num_classes):
     """
     Classifies data into quantiles.
@@ -121,7 +118,7 @@ def classify_data(merged_data, column_name, num_classes):
 def create_legend_elements(num_classes, quantiles, cmap):
     color_samples = np.linspace(0, 1, num_classes)
     colors = [cmap(sample) for sample in color_samples]
-    quantile_labels = [f'{quantiles.iloc[i]:.1f}% - {quantiles.iloc[i + 1]:.1f}' for i in range(num_classes)]
+    quantile_labels = [f'{quantiles.iloc[i]:.1f} - {quantiles.iloc[i + 1]:.1f}%' for i in range(num_classes)]
     legend_elements = [plt.Rectangle((0, 0), 1, 1, color=c, label=l) for c, l in zip(colors, quantile_labels)]
     legend_elements.append(
         plt.Line2D([0], [0], color=MUNICIPALITY_BORDER_COLOR, lw=MUNICIPALITY_BORDER_WIDTH, label='Hranica obce'))
@@ -135,7 +132,7 @@ def setup_plot(district_name):
     ax.set_axis_off()
     return fig, ax
 
-def plot_map(merged_data, classified_data, quantiles, district_name):
+def plot_map(merged_data, classified_data, quantiles, district_name, num_classes):
     """
     Plots the map with the classified data.
 
@@ -149,9 +146,10 @@ def plot_map(merged_data, classified_data, quantiles, district_name):
     merged_data.assign(cl=classified_data).plot(column='cl', cmap=cmap, linewidth=MUNICIPALITY_BORDER_WIDTH, ax=ax,
                                                 edgecolor=MUNICIPALITY_BORDER_COLOR)
     add_map_features(merged_data, ax)
-    ax.legend(handles=create_legend_elements(NUM_CLASSES, quantiles, cmap), title=LEGEND_TITLE, loc='upper left')
+    ax.legend(handles=create_legend_elements(num_classes, quantiles, cmap), title=LEGEND_TITLE, loc='upper left')
     plt.tight_layout()
     plt.savefig(OUTPUT_FILE, dpi=300, bbox_inches='tight', pad_inches=0.1)
+    plt.close()
 
 def add_map_features(merged_data, ax):
     """
@@ -162,43 +160,46 @@ def add_map_features(merged_data, ax):
         ax (matplotlib.axes.Axes): Matplotlib axes object to plot on.
     """
     text_properties = {
-        'fontsize': 9, 'color': 'white', 'ha': 'center', 'va': 'center', 'weight': 'bold',
+        'fontsize': 7, 'color': 'white', 'ha': 'center', 'va': 'center', 'weight': 'bold',
         'path_effects': [PathEffects.withStroke(linewidth=1.5, foreground='black')]
     }
     for idx, row in merged_data.iterrows():
         representative_point = row['geometry'].representative_point()
-        ax.annotate(text=row['NM4'], xy=(representative_point.x, representative_point.y), **text_properties)
+        ax.annotate(text=row['NM4']+' '+f'{row[COLUMN_NAME]:.1f}%', xy=(representative_point.x, representative_point.y), **text_properties)
     merged_data.dissolve().boundary.plot(ax=ax, edgecolor='red', linewidth=2)
 
 
 # Main Execution
-districts = ckan_api.fetch_districts()
-shp_api.download_and_unzip_shp(SHP_ZIP_URL)
-if districts is not None:
-    print("Available Districts: \n", districts['countyName'].to_string())
-    try:
-        district_index = 35#int(input("Enter desired district index: "))
-        selected_district = districts.iloc[district_index]
-        selected_district_string = selected_district['countyName']
-        print("Vybraný okres: ", selected_district_string)
+#districts = ckan_api.fetch_districts()
 
-        municipalities = ckan_api.fetch_municipalities(selected_district['objectId'])
-        if municipalities is not None:
-            print("Obce okresu:\n",municipalities['municipalityName'].to_string())
+shp_api.download_and_unzip_shp(SHP_ZIP_URL)
+shp_data = load_data(SHP_FILE_PATH)
+
+districts = shp_data.drop_duplicates(subset=['LAU1'])[['LAU1', 'LAU1_CODE']]
+
+if districts is not None:
+    print("Available Districts: \n", districts['LAU1'].to_string())
+    for index_district, selected_district in districts.iterrows():
+        selected_district_string = selected_district['LAU1']
+        OUTPUT_FILE = 'maps/map_' + selected_district_string + '.png'
+        if os.path.exists(OUTPUT_FILE):
+            continue
+        print("Vybraný okres: ", selected_district_string)
+        municipalities = shp_data[shp_data['LAU1_CODE'] == selected_district['LAU1_CODE']]
+        #municipalities = ckan_api.fetch_municipalities(selected_district['LAU1_CODE'])
+        if municipalities is not None and 'NM4' in municipalities:
+            print("Obce okresu:\n",municipalities['NM4'].to_string())
             municipalities_land_data = pd.DataFrame()
-            for index, municipality in municipalities.iterrows():
-                municipalityName = municipality['municipalityName']
-                municipalityCode = municipality['municipalityCode']
+            for index_muni, municipality in municipalities.iterrows():
+                municipalityName = municipality['NM4']
+                municipalityCode = municipality['LAU2_CODE']
                 muni_land_data = load_data_from_api(municipalityName, municipalityCode)
                 municipalities_land_data = pd.concat([municipalities_land_data, muni_land_data])
 
-            shp_data = load_data(SHP_FILE_PATH)
-
             merged_data = merge_datasets(shp_data, municipalities_land_data, selected_district_string)
-            classified_data, quantiles = classify_data(merged_data, COLUMN_NAME, NUM_CLASSES)
-            plot_map(merged_data, classified_data, quantiles, selected_district_string)
 
-    except ValueError as e:
-        print("Invalid input. Please enter a valid integer:", e)
-    except IndexError as e:
-        print("Index out of range. Please enter a valid district index:", e)
+            num_classes = min(merged_data.shape[0], NUM_CLASSES)
+            classified_data, quantiles = classify_data(merged_data, COLUMN_NAME, num_classes)
+
+            plot_map(merged_data, classified_data, quantiles, selected_district_string, num_classes)
+
