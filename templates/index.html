@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>District Map Generator</title>
+</head>
+<body>
+    <h1>Select a District</h1>
+    <form action="/generate_map" method="post">
+        <select name="district">
+            {% for district in districts %}
+            <option value="{{ district }}">{{ district }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit">Generate Map</button>
+    </form>
+</body>
+</html>

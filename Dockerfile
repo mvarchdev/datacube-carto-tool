@@ -13,7 +13,7 @@ RUN apt-get update \
 
 # Install Python packages
 RUN pip3 install --no-cache-dir wheel \
-    && pip3 install --no-cache-dir geopandas matplotlib matplotlib_scalebar mapclassify requests
+    && pip3 install --no-cache-dir geopandas matplotlib matplotlib_scalebar mapclassify requests Flask
 
 # Run python script when the container launches
 CMD ["python3", "./bs.py"]

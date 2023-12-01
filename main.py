@@ -1,4 +1,6 @@
+import logging
 import os
+from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
@@ -8,13 +10,15 @@ import numpy as np
 import shp_api
 import datacube_api
 
+logging.basicConfig(level=logging.INFO)
+
 # Constants and Configurations
 CSV_FILE_PATH = 'data.csv'
 SHP_FILE_PATH = 'shp/obec_0.shp'
 COLUMN_NAME = 'Podiel poľnohosp. pôdy z celkovej plochy (%)'
 NUM_CLASSES = 5
 COLOR_MAP = plt.colormaps['viridis']
-OUTPUT_FILE = 'mapa'
+OUTPUT_DIR = Path('maps')
 MAP_TITLE = 'Podiel Poľnohospodárskej Pôdy v Obciach Okresu'
 LEGEND_TITLE = 'Legenda'
 
@@ -80,7 +84,7 @@ def setup_plot(district_name):
     ax.set_axis_off()
     return fig, ax
 
-def plot_map(merged_data, classified_data, quantiles, district_name, num_classes):
+def plot_map(merged_data, classified_data, quantiles, district_name, num_classes, output_file):
     fig, ax = setup_plot(district_name)
     cmap = COLOR_MAP
     merged_data.assign(cl=classified_data).plot(column='cl', cmap=cmap, linewidth=MUNICIPALITY_BORDER_WIDTH, ax=ax,
@@ -88,7 +92,7 @@ def plot_map(merged_data, classified_data, quantiles, district_name, num_classes
     add_map_features(merged_data, ax)
     ax.legend(handles=create_legend_elements(num_classes, quantiles, cmap), title=LEGEND_TITLE, loc='upper left')
     plt.tight_layout()
-    plt.savefig(OUTPUT_FILE, dpi=300, bbox_inches='tight', pad_inches=0.1)
+    plt.savefig(output_file, dpi=300, bbox_inches='tight', pad_inches=0.1)
     plt.close()
 
 def add_map_features(merged_data, ax):
@@ -101,34 +105,81 @@ def add_map_features(merged_data, ax):
         ax.annotate(text=row['NM4']+' '+f'{row[COLUMN_NAME]:.1f}%', xy=(representative_point.x, representative_point.y), **text_properties)
     merged_data.dissolve().boundary.plot(ax=ax, edgecolor='red', linewidth=2)
 
-# Main Execution
-shp_api.download_and_unzip_shp(SHP_ZIP_URL)
-shp_data = load_shp_data(SHP_FILE_PATH)
+def main():
+    """
+    Main execution function for the script.
+    """
+    try:
+        shp_api.download_and_unzip_shp(SHP_ZIP_URL)
+    except Exception as e:
+        logging.error(f"Failed to download or unzip shapefile: {e}")
+        return
 
-districts = shp_data.drop_duplicates(subset=['LAU1'])[['LAU1', 'LAU1_CODE']]
+    try:
+        shp_data = load_shp_data(SHP_FILE_PATH)
+    except IOError as e:
+        logging.error(f"Failed to load shapefile data: {e}")
+        return
 
-if not os.path.exists('maps'):
-    os.makedirs('maps')
+    process_districts(shp_data)
 
-if districts is not None:
-    print("Available Districts: \n", districts['LAU1'].to_string())
-    for index_district, selected_district in districts.iterrows():
-        selected_district_name = selected_district['LAU1']
-        selected_district_code = selected_district['LAU1_CODE']
-        OUTPUT_FILE = 'maps/map_' + selected_district_name + '.png'
-        if os.path.exists(OUTPUT_FILE):
-            continue
-        print("Vybraný okres: ", selected_district_name)
-        municipalities = shp_data[shp_data['LAU1_CODE'] == selected_district['LAU1_CODE']]
+def process_districts(shp_data):
+    """
+    Processes each district found in the shapefile data.
 
-        if municipalities is not None and 'NM4' in municipalities:
-            print("Obce okresu:\n", municipalities['NM4'].to_string())
-            municipalities_land_data = get_land_data_api(municipalities)
+    Args:
+        shp_data (GeoDataFrame): Loaded shapefile data.
+    """
+    districts = shp_data.drop_duplicates(subset=['LAU1'])[['LAU1', 'LAU1_CODE']]
 
-            if municipalities_land_data is not None:
+
+    OUTPUT_DIR.mkdir(exist_ok=True)
+
+    if districts is not None:
+        for _, selected_district in districts.iterrows():
+            process_district(shp_data, selected_district)
+
+def process_district(shp_data, selected_district):
+    """
+    Processes a single district.
+
+    Args:
+        shp_data (GeoDataFrame): Loaded shapefile data.
+        selected_district (pd.Series): Data for the selected district.
+    """
+    selected_district_name = selected_district['LAU1']
+    selected_district_code = selected_district['LAU1_CODE']
+    output_file = OUTPUT_DIR / f'map_{selected_district_name}.png'
+
+    if output_file.exists():
+        logging.info(f"Map for {selected_district_name} already exists. Skipping.")
+        return
+
+    logging.info(f"Processing District: {selected_district_name}")
+    municipalities = shp_data[shp_data['LAU1_CODE'] == selected_district_code]
+
+    if municipalities is not None and 'NM4' in municipalities:
+        municipalities_land_data = get_land_data_api(municipalities)
+
+        if municipalities_land_data is not None:
+            try:
                 merged_data = merge_datasets(shp_data, municipalities_land_data, selected_district_code)
-
                 num_classes = min(merged_data.shape[0], NUM_CLASSES)
                 classified_data, quantiles = classify_data(merged_data, COLUMN_NAME, num_classes)
+                plot_map(merged_data, classified_data, quantiles, selected_district_name, num_classes, output_file)
+            except ValueError as e:
+                logging.error(f"Data validation error: {e}")
 
-                plot_map(merged_data, classified_data, quantiles, selected_district_name, num_classes)
+def get_district_list():
+    shp_data = load_shp_data(SHP_FILE_PATH)
+    return shp_data['LAU1'].drop_duplicates().tolist()
+
+# Modify this function to process a district by its name
+def process_district_by_name(district_name):
+    shp_data = load_shp_data(SHP_FILE_PATH)
+    selected_district = shp_data[shp_data['LAU1'] == district_name].iloc[0]
+    process_district(shp_data, selected_district)
+
+if __name__ == '__main__':
+    main()
+
