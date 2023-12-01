@@ -1,5 +1,6 @@
 cache
 shp
+maps
 __pycache__
 .idea
 .vagrant

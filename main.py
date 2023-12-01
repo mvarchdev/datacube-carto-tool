@@ -45,23 +45,25 @@ def load_data(shp_file_path):
         raise IOError(f"Error loading data: {e}")
     return shp_data
 
-def load_data_from_api(municipality_name, municipality_code=None):
+def load_data_from_api(municipalities):
     """
-    Loads data for a given municipality using the API.
+    Loads data for given municipalities using the API.
 
     Args:
-        municipality_name (str): Name of the municipality.
+        municipalities (DataFrame): DataFrame with municipality names and codes.
 
     Returns:
-        DataFrame: DataFrame containing the data for the municipality.
+        DataFrame: DataFrame containing the data for the municipalities.
     """
-    api_data = datacube_api.get_land_data(municipality_name, municipality_code)
-    if api_data is not None:
-        calc_data = {COLUMN_NAME: (
-            (api_data['Agricultural land in total in m2'] / api_data['Total area of land of municipality-town in m2']) * 100
-        ), 'municipalityCode': municipality_code}
-        calculated_data_df = pd.DataFrame(data=calc_data, index=[municipality_name])
-        return calculated_data_df
+    municipalities_codes = municipalities['LAU2_CODE'].tolist()
+    latest_year = datacube_api.get_latest_year()
+    indicators = datacube_api.get_all_indicators()
+    cities_data = datacube_api.get_land_data_cities_code(municipalities_codes)
+
+    if cities_data is not None:
+        cities_data[COLUMN_NAME] = (
+            cities_data['Agricultural land in total in m2'] / cities_data['Total area of land of municipality-town in m2']) * 100
+        return cities_data
     return None
 
 def validate_data(merged_data, land_data):
@@ -75,7 +77,7 @@ def validate_data(merged_data, land_data):
     Raises:
         ValueError: If there are missing municipalities in the merged data.
     """
-    missing_data = set(land_data['municipalityCode']) - set(merged_data['LAU2_CODE'])
+    missing_data = set(land_data.index) - set(merged_data['LAU2_CODE'])
     if missing_data:
         raise ValueError(f"Missing SHP data for municipalities: {missing_data}")
 
@@ -93,7 +95,7 @@ def merge_datasets(shp_data, csv_data, district_name):
         GeoDataFrame: Merged and filtered data.
     """
     filtered_data = shp_data[shp_data['LAU1'] == district_name]
-    merged_data = pd.merge(filtered_data, csv_data, left_on='NM4', right_index=True)
+    merged_data = pd.merge(filtered_data, csv_data, left_on='LAU2_CODE', right_index=True)
     validate_data(merged_data, csv_data)
     return merged_data
 
@@ -168,10 +170,7 @@ def add_map_features(merged_data, ax):
         ax.annotate(text=row['NM4']+' '+f'{row[COLUMN_NAME]:.1f}%', xy=(representative_point.x, representative_point.y), **text_properties)
     merged_data.dissolve().boundary.plot(ax=ax, edgecolor='red', linewidth=2)
 
-
 # Main Execution
-#districts = ckan_api.fetch_districts()
-
 shp_api.download_and_unzip_shp(SHP_ZIP_URL)
 shp_data = load_data(SHP_FILE_PATH)
 
@@ -186,20 +185,15 @@ if districts is not None:
             continue
         print("Vybraný okres: ", selected_district_string)
         municipalities = shp_data[shp_data['LAU1_CODE'] == selected_district['LAU1_CODE']]
-        #municipalities = ckan_api.fetch_municipalities(selected_district['LAU1_CODE'])
+
         if municipalities is not None and 'NM4' in municipalities:
-            print("Obce okresu:\n",municipalities['NM4'].to_string())
-            municipalities_land_data = pd.DataFrame()
-            for index_muni, municipality in municipalities.iterrows():
-                municipalityName = municipality['NM4']
-                municipalityCode = municipality['LAU2_CODE']
-                muni_land_data = load_data_from_api(municipalityName, municipalityCode)
-                municipalities_land_data = pd.concat([municipalities_land_data, muni_land_data])
+            print("Obce okresu:\n", municipalities['NM4'].to_string())
+            municipalities_land_data = load_data_from_api(municipalities)
 
-            merged_data = merge_datasets(shp_data, municipalities_land_data, selected_district_string)
+            if municipalities_land_data is not None:
+                merged_data = merge_datasets(shp_data, municipalities_land_data, selected_district_string)
 
-            num_classes = min(merged_data.shape[0], NUM_CLASSES)
-            classified_data, quantiles = classify_data(merged_data, COLUMN_NAME, num_classes)
+                num_classes = min(merged_data.shape[0], NUM_CLASSES)
+                classified_data, quantiles = classify_data(merged_data, COLUMN_NAME, num_classes)
 
-            plot_map(merged_data, classified_data, quantiles, selected_district_string, num_classes)
-
+                plot_map(merged_data, classified_data, quantiles, selected_district_string, num_classes)

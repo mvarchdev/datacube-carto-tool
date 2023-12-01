@@ -235,7 +235,7 @@ def get_land_data(cities_string: str, year: str, indicators: list) -> dict:
         indicator_name = indicator_labels.get(indicator_code, "Unknown Indicator")
 
         if city_code not in data:
-            data[city_code] = {'City Name': city_name}
+            data[city_code] = {'municipalityName': city_name}
 
         data[city_code][indicator_name] = val
 
@@ -272,14 +272,14 @@ def get_land_data_cities_code(cities_code_list: list) -> pd.DataFrame:
         logging.error("Failed to fetch land data for all cities")
         return None
 
-    df = pd.DataFrame.from_dict(cities_data, orient='index').reset_index().rename(columns={'index': 'City Code'})
-    required_columns = ['City Name'] + list(indicators.values())
+    df = pd.DataFrame.from_dict(cities_data, orient='index').reset_index().rename(columns={'index': 'municipalityCode'})
+    required_columns = ['municipalityName'] + list(indicators.values())
     missing_columns = [col for col in required_columns if col not in df.columns]
     if missing_columns:
         logging.error(f"Missing required columns: {missing_columns}")
         return None
 
-    return df.set_index('City Code')
+    return df.set_index('municipalityCode')
 
 @memory.cache
 def get_city_codes(cities_name_list: list) -> list:
