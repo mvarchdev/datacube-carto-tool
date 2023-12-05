@@ -15,9 +15,11 @@ def index():
 
 @app.route('/generate_map', methods=['POST'])
 def generate_map():
-    district = request.form.get('district')
-    if district:
-        if map_generation_manager.generate_map_for_district(district):
+    district_code = request.form.get('district_code')
+    num_classes = request.form.get('num_classes', type=int)
+    color_palette_name = request.form.get('color_palette_name')
+    if district_code:
+        if map_generation_manager.generate_map_for_district(district_code, num_classes, color_palette_name):
             return jsonify({'status': 'Accepted', 'message': 'Map generation started'})
         else:
             return jsonify({'status': 'Already Processing', 'message': 'Map is already being generated'})
@@ -26,12 +28,14 @@ def generate_map():
 @app.route('/map_status', methods=['GET'])
 def map_status():
     district_code = request.args.get('district_code')
-    status = map_generation_manager.get_status(district_code)
+    num_classes = request.args.get('num_classes')
+    color_palette_name = request.args.get('color_palette_name')
+    status = map_generation_manager.get_status(district_code, num_classes, color_palette_name)
     return jsonify({'status': status})
 
-@app.route('/maps/<district_code>')
-def serve_map(district_code):
-    file_path = Path('maps') / f'map_{district_code}.png'
+@app.route('/maps/<district_code>/<num_classes>/<color_palette_name>')
+def serve_map(district_code, num_classes, color_palette_name):
+    file_path = Path('maps') / f'map_{district_code}_{num_classes}_{color_palette_name}.png'
     if file_path.exists():
         return send_from_directory(file_path.parent, file_path.name)
     return 'Map not found', 404

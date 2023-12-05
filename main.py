@@ -17,8 +17,8 @@ logging.basicConfig(level=logging.INFO)
 CSV_FILE_PATH = 'data.csv'
 SHP_FILE_PATH = 'shp/obec_0.shp'
 COLUMN_NAME = 'Podiel poľnohosp. pôdy z celkovej plochy (%)'
-NUM_CLASSES = 5
-COLOR_MAP = plt.colormaps['viridis']
+NUM_CLASSES_DEFAULT = 5
+COLOR_MAP_DEFAULT = 'viridis'
 OUTPUT_DIR = Path('maps')
 MAP_TITLE = 'Podiel Poľnohospodárskej Pôdy v Obciach Okresu'
 LEGEND_TITLE = 'Legenda'
@@ -31,12 +31,14 @@ MUNICIPALITY_BORDER_WIDTH = 1
 DISTRICT_BORDER_COLOR = 'red'
 DISTRICT_BORDER_WIDTH = 2
 
+
 def load_shp_data(shp_file_path):
     try:
         shp_data = gpd.read_file(shp_file_path)
     except Exception as e:
         raise IOError(f"Error loading data: {e}")
     return shp_data
+
 
 def get_land_data_api(municipalities):
     municipalities_codes = municipalities['LAU2_CODE'].tolist()
@@ -46,9 +48,11 @@ def get_land_data_api(municipalities):
 
     if cities_data is not None:
         cities_data[COLUMN_NAME] = (
-            cities_data['Agricultural land in total in m2'] / cities_data['Total area of land of municipality-town in m2']) * 100
+                                           cities_data['Agricultural land in total in m2'] / cities_data[
+                                       'Total area of land of municipality-town in m2']) * 100
         return cities_data
     return None
+
 
 def validate_data(merged_data, land_data):
     missing_data = set(land_data.index) - set(merged_data['LAU2_CODE'])
@@ -62,11 +66,13 @@ def merge_datasets(shp_data, csv_data, district_code):
     validate_data(merged_data, csv_data)
     return merged_data
 
+
 def classify_data(merged_data, column_name, num_classes):
-    quantile_list = np.linspace(0, 1, num_classes+1)
+    quantile_list = np.linspace(0, 1, num_classes + 1)
     quantiles = merged_data[column_name].quantile(quantile_list)
     classified_data = pd.cut(merged_data[column_name], quantiles, labels=False, include_lowest=True)
     return classified_data, quantiles
+
 
 def create_legend_elements(num_classes, quantiles, cmap):
     color_samples = np.linspace(0, 1, num_classes)
@@ -79,22 +85,24 @@ def create_legend_elements(num_classes, quantiles, cmap):
         plt.Line2D([0], [0], color=DISTRICT_BORDER_COLOR, lw=DISTRICT_BORDER_WIDTH, label='Hranica okresu'))
     return legend_elements
 
+
 def setup_plot(district_name):
     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-    ax.set_title(MAP_TITLE+' '+district_name)
+    ax.set_title(MAP_TITLE + ' ' + district_name)
     ax.set_axis_off()
     return fig, ax
 
-def plot_map(merged_data, classified_data, quantiles, district_name, num_classes, output_file):
+
+def plot_map(merged_data, classified_data, quantiles, district_name, num_classes, output_file, color_map):
     fig, ax = setup_plot(district_name)
-    cmap = COLOR_MAP
-    merged_data.assign(cl=classified_data).plot(column='cl', cmap=cmap, linewidth=MUNICIPALITY_BORDER_WIDTH, ax=ax,
+    merged_data.assign(cl=classified_data).plot(column='cl', cmap=color_map, linewidth=MUNICIPALITY_BORDER_WIDTH, ax=ax,
                                                 edgecolor=MUNICIPALITY_BORDER_COLOR)
     add_map_features(merged_data, ax)
-    ax.legend(handles=create_legend_elements(num_classes, quantiles, cmap), title=LEGEND_TITLE, loc='upper left')
+    ax.legend(handles=create_legend_elements(num_classes, quantiles, color_map), title=LEGEND_TITLE, loc='upper left')
     plt.tight_layout()
     plt.savefig(output_file, dpi=300, bbox_inches='tight', pad_inches=0.1)
     plt.close()
+
 
 def add_map_features(merged_data, ax):
     text_properties = {
@@ -105,6 +113,7 @@ def add_map_features(merged_data, ax):
         representative_point = row['geometry'].representative_point()
         ax.annotate(text=row['NM4'], xy=(representative_point.x, representative_point.y), **text_properties)
     merged_data.dissolve().boundary.plot(ax=ax, edgecolor='red', linewidth=2)
+
 
 def main():
     """
@@ -124,6 +133,7 @@ def main():
 
     process_districts(shp_data)
 
+
 def process_districts(shp_data):
     """
     Processes each district found in the shapefile data.
@@ -133,14 +143,14 @@ def process_districts(shp_data):
     """
     districts = shp_data.drop_duplicates(subset=['LAU1'])[['LAU1', 'LAU1_CODE']]
 
-
     OUTPUT_DIR.mkdir(exist_ok=True)
 
     if districts is not None:
         for _, selected_district in districts.iterrows():
             process_district(selected_district)
 
-def _process_district(shp_data, selected_district):
+
+def _process_district(shp_data, selected_district, num_classes, color_palette_name):
     """
     Processes a single district.
 
@@ -150,7 +160,7 @@ def _process_district(shp_data, selected_district):
     """
     selected_district_name = selected_district['LAU1']
     selected_district_code = selected_district['LAU1_CODE']
-    output_file = OUTPUT_DIR / f'map_{selected_district_code}.png'
+    output_file = OUTPUT_DIR / f'map_{selected_district_code}_{num_classes}_{color_palette_name}.png'
 
     if output_file.exists():
         logging.info(f"Map for {selected_district_name} already exists. Skipping.")
@@ -165,13 +175,17 @@ def _process_district(shp_data, selected_district):
         if municipalities_land_data is not None:
             try:
                 merged_data = merge_datasets(shp_data, municipalities_land_data, selected_district_code)
-                num_classes = min(merged_data.shape[0], NUM_CLASSES)
+                num_classes = min(merged_data.shape[0], num_classes)
                 classified_data, quantiles = classify_data(merged_data, COLUMN_NAME, num_classes)
-                plot_map(merged_data, classified_data, quantiles, selected_district_name, num_classes, output_file)
+                color_map = plt.colormaps[color_palette_name]
+                plot_map(merged_data, classified_data, quantiles, selected_district_name, num_classes, output_file,
+                         color_map)
             except ValueError as e:
                 logging.error(f"Data validation error: {e}")
 
+
 shp_data = load_shp_data(SHP_FILE_PATH)
+
 
 # Function to get the list of all districts
 def get_district_list():
@@ -182,26 +196,28 @@ def get_district_list():
         logging.error(f"Failed to load shapefile data for district list: {e}")
         return []
 
+
 # Function to process a specific district
-def process_district(district_code):
+def process_district(district_code, num_classes=NUM_CLASSES_DEFAULT, color_palette_name=COLOR_MAP_DEFAULT):
     try:
         selected_district = shp_data[shp_data['LAU1_CODE'] == district_code].iloc[0]
-        _process_district(shp_data, selected_district)
+        _process_district(shp_data, selected_district, num_classes, color_palette_name)
     except Exception as e:
         logging.error(f"Failed to process district {district_code}: {e}")
+
 
 # Function to get land data for a specific district
 def get_land_data(district_code):
     try:
         municipalities = shp_data[shp_data['LAU1_CODE'] == district_code]
         municipalities_land_data = get_land_data_api(municipalities)
-        #municipalities_land_data = municipalities_land_data.replace({np.nan: None})
+        # municipalities_land_data = municipalities_land_data.replace({np.nan: None})
         return municipalities_land_data.to_html() if municipalities_land_data is not None else "<p>No data available.</p>"
     except Exception as e:
         error_message = f"Failed to get land data for district {district_code}: {e}"
         logging.error(error_message)
         raise Exception(error_message)  # Raise to send the error back to Flask
 
+
 if __name__ == '__main__':
     main()
-

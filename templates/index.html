@@ -6,56 +6,112 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .header {
+            background-color: #ffffff;
+            padding: 15px 0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .container-custom {
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+            margin-top: 20px;
+        }
         .loader {
             border: 5px solid #f3f3f3;
             border-radius: 50%;
             border-top: 5px solid #3498db;
             width: 40px;
             height: 40px;
-            -webkit-animation: spin 2s linear infinite;
             animation: spin 2s linear infinite;
         }
-
-        @-webkit-keyframes spin {
-            0% { -webkit-transform: rotate(0deg); }
-            100% { -webkit-transform: rotate(360deg); }
-        }
-
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-
-        #error-message {
-            color: red;
+        @-webkit-keyframes spin {
+            0% { -webkit-transform: rotate(0deg); }
+            100% { -webkit-transform: rotate(360deg); }
+        }
+        .error-message {
+            color: #dc3545;
+            margin-top: 15px;
+        }
+        .form-label {
+            font-weight: 600;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            border-color: #007bff;
+        }
+        .btn-primary:hover {
+            background-color: #0069d9;
+            border-color: #0062cc;
+        }
+        #customColorInput {
+            display: none;
         }
     </style>
 </head>
 <body>
-    <div class="container my-4">
-        <h1 class="mb-4">Select District</h1>
-        <div class="row">
-            <div class="col-md-6">
-                <select id="districtSelect" class="form-control">
-                    {% for district_name, district_code in districts %}
-                    <option value="{{ district_code }}">{{ district_name }} ({{ district_code }})</option>
-                    {% endfor %}
-                </select>
+    <div class="container">
+        <div class="header text-center">
+            <h1>District Map Generator</h1>
+        </div>
+        <div class="container-custom">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="districtSelect" class="form-label">Select District:</label>
+                    <select id="districtSelect" class="form-select">
+                        {% for district_name, district_code in districts %}
+                        <option value="{{ district_code }}">{{ district_name }} ({{ district_code }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label for="numClasses" class="form-label">Number of Classes:</label>
+                    <input type="number" class="form-control" id="numClasses" value="5" min="1" max="10">
+                </div>
             </div>
-            <div class="col-md-6">
-                <button id="generateButton" class="btn btn-primary">Generate Map</button>
+
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label for="colorPalette" class="form-label">Color Palette:</label>
+                    <select id="colorPalette" class="form-select">
+                        <option value="viridis">Viridis</option>
+                        <option value="plasma">Plasma</option>
+                        <option value="inferno">Inferno</option>
+                        <option value="magma">Magma</option>
+                        <option value="cividis">Cividis</option>
+                        <option value="custom">Custom (Enter Below)</option>
+                    </select>
+                </div>
+                <div class="col-md-6" id="customColorInput">
+                    <label for="customColor" class="form-label">Custom Color:</label>
+                    <input type="text" class="form-control" id="customColor" placeholder="Enter a color string (e.g., #ff5733)">
+                </div>
             </div>
+
+            <div class="row mb-3">
+                <div class="col text-center">
+                    <button id="generateButton" class="btn btn-primary">Generate Map</button>
+                </div>
+            </div>
+
+            <div id="loading" class="text-center" style="display:none;">
+                <div class="loader"></div>
+                <div>Generating map, please wait...</div>
+            </div>
+            <div id="mapResult" class="my-3"></div>
+            <div id="data-container" class="table-responsive"></div>
+            <div id="error-message" class="error-message"></div>
         </div>
-        <div id="loading" class="my-3" style="display:none;">
-            <div class="loader"></div>
-            <span class="ml-2">Generating map, please wait...</span>
-        </div>
-        <div id="mapResult" class="my-3"></div>
-        <div id="data-container" class="table-responsive">
-            <!-- Data will be loaded here -->
-        </div>
-        <div id="error-message" class="mt-3"></div> <!-- Display error messages here -->
     </div>
+
     <script src="/static/main.js"></script>
 </body>
 </html>
