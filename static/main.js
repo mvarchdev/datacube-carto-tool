@@ -1,31 +1,48 @@
-$(document).ready(function() {
-    $('#district-form').submit(function(event) {
-        event.preventDefault();
-        var districtCode = $('#district-select').val();
+$(document).ready(function(){
+    $('#generateButton').click(function(){
+        var selectedDistrict = $('#districtSelect').val();
         $('#loading').show();
-        $.post('/generate_map', { district_code: districtCode }, function(response) {
-            waitForMapGeneration(districtCode);
+        $('#mapResult').empty();
+        $('#data-container').empty();
+
+        $.post('/generate_map', {district: selectedDistrict}, function(data){
+            checkMapStatus(selectedDistrict);
         });
     });
 });
 
-function waitForMapGeneration(districtCode) {
-    $.get('/get_data/' + districtCode, function(data) {
-        if (data.status === 'completed') {
+function showError(message) {
+    $('#error-message').text(message).show();
+}
+
+function checkMapStatus(district_code) {
+    $.get('/map_status', {district_code: district_code}, function(data) {
+        if (data.status === 'Completed') {
+            $('#mapResult').html('<img src="/maps/' + district_code + '" alt="Generated Map" class="img-fluid">');
             $('#loading').hide();
-            // Display map and data
-            displayMap(data.map_url);
-            displayData(data.land_data);
+            fetchData(district_code);
+        } else if (data.status.includes('Error')) {
+            $('#loading').hide();
+            showError('Error in map generation: ' + data.status);
         } else {
-            setTimeout(function() { waitForMapGeneration(districtCode); }, 2000);
+            setTimeout(function() { checkMapStatus(district_code); }, 2000);
         }
+    }).fail(function() {
+        $('#loading').hide();
+        showError('Error checking map status.');
     });
 }
 
-function displayMap(mapUrl) {
-    $('#map').html('<img src="' + mapUrl + '" alt="Generated Map">');
+function fetchData(district_code) {
+    $.get('/get_data', {district_code: district_code}, function(landData) {
+        populateTable(landData);
+    }).fail(function(jqXHR, textStatus, errorThrown) {
+        console.error('Error fetching data:', textStatus, errorThrown);
+    });
 }
 
-function displayData(landData) {
-    // Populate table with land data
+function populateTable(data) {
+    $('#data-container').empty();
+    $('#data-container').html(data['table']);
+    $('#data-container table').addClass('table table-bordered table-hover');
 }

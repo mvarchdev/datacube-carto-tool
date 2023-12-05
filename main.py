@@ -103,7 +103,7 @@ def add_map_features(merged_data, ax):
     }
     for idx, row in merged_data.iterrows():
         representative_point = row['geometry'].representative_point()
-        ax.annotate(text=row['NM4']+' '+f'{row[COLUMN_NAME]:.1f}%', xy=(representative_point.x, representative_point.y), **text_properties)
+        ax.annotate(text=row['NM4'], xy=(representative_point.x, representative_point.y), **text_properties)
     merged_data.dissolve().boundary.plot(ax=ax, edgecolor='red', linewidth=2)
 
 def main():
@@ -195,7 +195,7 @@ def get_land_data(district_code):
     try:
         municipalities = shp_data[shp_data['LAU1_CODE'] == district_code]
         municipalities_land_data = get_land_data_api(municipalities)
-        municipalities_land_data = municipalities_land_data.replace({np.nan: None})
+        #municipalities_land_data = municipalities_land_data.replace({np.nan: None})
         return municipalities_land_data.to_html() if municipalities_land_data is not None else "<p>No data available.</p>"
     except Exception as e:
         error_message = f"Failed to get land data for district {district_code}: {e}"
