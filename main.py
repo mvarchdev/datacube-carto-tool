@@ -1,5 +1,4 @@
 import logging
-import os
 from pathlib import Path
 
 import geopandas as gpd
@@ -7,6 +6,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as PathEffects
 import numpy as np
+from flask import jsonify
+
 import shp_api
 import datacube_api
 
@@ -137,9 +138,9 @@ def process_districts(shp_data):
 
     if districts is not None:
         for _, selected_district in districts.iterrows():
-            process_district(shp_data, selected_district)
+            process_district(selected_district)
 
-def process_district(shp_data, selected_district):
+def _process_district(shp_data, selected_district):
     """
     Processes a single district.
 
@@ -149,7 +150,7 @@ def process_district(shp_data, selected_district):
     """
     selected_district_name = selected_district['LAU1']
     selected_district_code = selected_district['LAU1_CODE']
-    output_file = OUTPUT_DIR / f'map_{selected_district_name}.png'
+    output_file = OUTPUT_DIR / f'map_{selected_district_code}.png'
 
     if output_file.exists():
         logging.info(f"Map for {selected_district_name} already exists. Skipping.")
@@ -170,15 +171,36 @@ def process_district(shp_data, selected_district):
             except ValueError as e:
                 logging.error(f"Data validation error: {e}")
 
-def get_district_list():
-    shp_data = load_shp_data(SHP_FILE_PATH)
-    return shp_data['LAU1'].drop_duplicates().tolist()
+shp_data = load_shp_data(SHP_FILE_PATH)
 
-# Modify this function to process a district by its name
-def process_district_by_name(district_name):
-    shp_data = load_shp_data(SHP_FILE_PATH)
-    selected_district = shp_data[shp_data['LAU1'] == district_name].iloc[0]
-    process_district(shp_data, selected_district)
+# Function to get the list of all districts
+def get_district_list():
+    try:
+        districts = shp_data[['LAU1', 'LAU1_CODE']].drop_duplicates()
+        return [(row['LAU1'], row['LAU1_CODE']) for index, row in districts.iterrows()]
+    except Exception as e:
+        logging.error(f"Failed to load shapefile data for district list: {e}")
+        return []
+
+# Function to process a specific district
+def process_district(district_code):
+    try:
+        selected_district = shp_data[shp_data['LAU1_CODE'] == district_code].iloc[0]
+        _process_district(shp_data, selected_district)
+    except Exception as e:
+        logging.error(f"Failed to process district {district_code}: {e}")
+
+# Function to get land data for a specific district
+def get_land_data(district_code):
+    try:
+        municipalities = shp_data[shp_data['LAU1_CODE'] == district_code]
+        municipalities_land_data = get_land_data_api(municipalities)
+        municipalities_land_data = municipalities_land_data.replace({np.nan: None})
+        return municipalities_land_data.to_html() if municipalities_land_data is not None else "<p>No data available.</p>"
+    except Exception as e:
+        error_message = f"Failed to get land data for district {district_code}: {e}"
+        logging.error(error_message)
+        raise Exception(error_message)  # Raise to send the error back to Flask
 
 if __name__ == '__main__':
     main()

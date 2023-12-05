@@ -2,16 +2,124 @@
 <html>
 <head>
     <title>District Map Generator</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <style>
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 5px solid #3498db;
+            width: 40px;
+            height: 40px;
+            -webkit-animation: spin 2s linear infinite;
+            animation: spin 2s linear infinite;
+        }
+
+        @-webkit-keyframes spin {
+            0% { -webkit-transform: rotate(0deg); }
+            100% { -webkit-transform: rotate(360deg); }
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        #error-message {
+            color: red;
+        }
+    </style>
 </head>
 <body>
-    <h1>Select a District</h1>
-    <form action="/generate_map" method="post">
-        <select name="district">
-            {% for district in districts %}
-            <option value="{{ district }}">{{ district }}</option>
-            {% endfor %}
-        </select>
-        <button type="submit">Generate Map</button>
-    </form>
+    <div class="container my-4">
+        <h1 class="mb-4">Select District</h1>
+        <div class="row">
+            <div class="col-md-6">
+                <select id="districtSelect" class="form-control">
+                    {% for district_name, district_code in districts %}
+                    <option value="{{ district_code }}">{{ district_name }} ({{ district_code }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <button id="generateButton" class="btn btn-primary">Generate Map</button>
+            </div>
+        </div>
+        <div id="loading" class="my-3" style="display:none;">
+            <div class="loader"></div>
+            <span class="ml-2">Generating map, please wait...</span>
+        </div>
+        <div id="mapResult" class="my-3"></div>
+        <div id="data-container" class="table-responsive table-bordered table-hover my-3">
+            <!-- Data will be loaded here -->
+        </div>
+        <div id="error-message" class="mt-3"></div> <!-- Display error messages here -->
+    </div>
+
+    <script>
+        $(document).ready(function(){
+            $('#generateButton').click(function(){
+                var selectedDistrict = $('#districtSelect').val();
+                $('#loading').show();
+                $('#mapResult').empty();
+                $('#landDataTable tbody').empty();
+
+                $.post('/generate_map', {district: selectedDistrict}, function(data){
+                    checkMapStatus(selectedDistrict);
+                });
+            });
+        });
+
+        function showError(message) {
+            $('#error-message').text(message).show();
+        }
+
+        function checkMapStatus(district_code) {
+            $.get('/map_status', {district_code: district_code}, function(data) {
+                if (data.status === 'Completed') {
+                    // Show map and fetch data
+                    $('#mapResult').html('<img src="/maps/' + district_code + '" alt="Generated Map" class="img-fluid">');
+                    $('#loading').hide();
+                    fetchData(district_code);
+                } else if (data.status.includes('Error')) {
+                    $('#loading').hide();
+                    showError('Error in map generation: ' + data.status);
+                } else {
+                    setTimeout(function() { checkMapStatus(district_code); }, 2000);
+                }
+            }).fail(function() {
+                $('#loading').hide();
+                showError('Error checking map status.');
+            });
+        }
+
+        function fetchData(district_code) {
+            console.log('fetchData called for district:', district_code);
+            $.get('/get_data', {district_code: district_code}, function(landData) {
+                populateTable(landData);
+            }).fail(function(jqXHR, textStatus, errorThrown) {
+                console.error('Error fetching data:', textStatus, errorThrown);
+            });
+        }
+
+        function populateTable(data) {
+            console.log(data)
+            window.recvDataTable = data
+            $('#data-container').empty();
+            $('#data-container').html(data['table']);
+            return
+            var tbody = $('#landDataTable tbody');
+            tbody.empty();
+            data.forEach(function(row) {
+                var tr = '<tr>' +
+                         '<td>' + row.municipalityName + '</td>' +
+                         '<td>' + row.indicatorName + '</td>' +
+                         '<td>' + row.value + '</td>' +
+                         '</tr>';
+                tbody.append(tr);
+            });
+        }
+    </script>
 </body>
 </html>
