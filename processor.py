@@ -6,7 +6,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as PathEffects
 import numpy as np
-from flask import jsonify
 
 import shp_api
 import datacube_api
@@ -14,16 +13,14 @@ import datacube_api
 logging.basicConfig(level=logging.INFO)
 
 # Constants and Configurations
-CSV_FILE_PATH = 'data.csv'
 SHP_FILE_PATH = 'shp/obec_0.shp'
-COLUMN_NAME = 'Podiel poľnohosp. pôdy z celkovej plochy (%)'
+RATIO_COLUMN_LABEL = 'Podiel poľnohosp. pôdy z celkovej plochy (%)'
+RATIO_COLUMN_CODE = 'ALRAT'
 NUM_CLASSES_DEFAULT = 5
 COLOR_MAP_DEFAULT = 'viridis'
 OUTPUT_DIR = Path('maps')
 MAP_TITLE = 'Podiel Poľnohospodárskej Pôdy v Obciach Okresu'
 LEGEND_TITLE = 'Legenda'
-
-SHP_ZIP_URL = 'https://www.geoportal.sk/files/zbgis/na_stiahnutie/shp/ah_shp_0.zip'
 
 # Border styles for the map
 MUNICIPALITY_BORDER_COLOR = 'black'
@@ -31,8 +28,10 @@ MUNICIPALITY_BORDER_WIDTH = 1
 DISTRICT_BORDER_COLOR = 'red'
 DISTRICT_BORDER_WIDTH = 2
 
+shp_api.download_and_unzip_shp()
 
-def load_shp_data(shp_file_path):
+
+def load_shp_data(shp_file_path=SHP_FILE_PATH):
     try:
         shp_data = gpd.read_file(shp_file_path)
     except Exception as e:
@@ -40,16 +39,15 @@ def load_shp_data(shp_file_path):
     return shp_data
 
 
+shp_data = load_shp_data()
+
+
 def get_land_data_api(municipalities):
     municipalities_codes = municipalities['LAU2_CODE'].tolist()
-    latest_year = datacube_api.get_latest_year()
-    indicators = datacube_api.get_all_indicators()
     cities_data = datacube_api.get_land_data_cities_code(municipalities_codes)
 
     if cities_data is not None:
-        cities_data[COLUMN_NAME] = (
-                                           cities_data['Agricultural land in total in m2'] / cities_data[
-                                       'Total area of land of municipality-town in m2']) * 100
+        cities_data[RATIO_COLUMN_LABEL] = (cities_data['U14020'] / cities_data['U14010']) * 100
         return cities_data
     return None
 
@@ -60,10 +58,10 @@ def validate_data(merged_data, land_data):
         raise ValueError(f"Missing SHP data for municipalities: {missing_data}")
 
 
-def merge_datasets(shp_data, csv_data, district_code):
+def merge_datasets(land_data, district_code):
     filtered_data = shp_data[shp_data['LAU1_CODE'] == district_code]
-    merged_data = pd.merge(filtered_data, csv_data, left_on='LAU2_CODE', right_index=True)
-    validate_data(merged_data, csv_data)
+    merged_data = pd.merge(filtered_data, land_data, left_on='LAU2_CODE', right_index=True)
+    validate_data(merged_data, land_data)
     return merged_data
 
 
@@ -115,47 +113,11 @@ def add_map_features(merged_data, ax):
     merged_data.dissolve().boundary.plot(ax=ax, edgecolor='red', linewidth=2)
 
 
-def main():
-    """
-    Main execution function for the script.
-    """
-    try:
-        shp_api.download_and_unzip_shp(SHP_ZIP_URL)
-    except Exception as e:
-        logging.error(f"Failed to download or unzip shapefile: {e}")
-        return
-
-    try:
-        shp_data = load_shp_data(SHP_FILE_PATH)
-    except IOError as e:
-        logging.error(f"Failed to load shapefile data: {e}")
-        return
-
-    process_districts(shp_data)
-
-
-def process_districts(shp_data):
-    """
-    Processes each district found in the shapefile data.
-
-    Args:
-        shp_data (GeoDataFrame): Loaded shapefile data.
-    """
-    districts = shp_data.drop_duplicates(subset=['LAU1'])[['LAU1', 'LAU1_CODE']]
-
-    OUTPUT_DIR.mkdir(exist_ok=True)
-
-    if districts is not None:
-        for _, selected_district in districts.iterrows():
-            process_district(selected_district)
-
-
-def _process_district(shp_data, selected_district, num_classes, color_palette_name):
+def _process_district(selected_district, num_classes, color_palette_name):
     """
     Processes a single district.
 
     Args:
-        shp_data (GeoDataFrame): Loaded shapefile data.
         selected_district (pd.Series): Data for the selected district.
     """
     selected_district_name = selected_district['LAU1']
@@ -174,17 +136,14 @@ def _process_district(shp_data, selected_district, num_classes, color_palette_na
 
         if municipalities_land_data is not None:
             try:
-                merged_data = merge_datasets(shp_data, municipalities_land_data, selected_district_code)
+                merged_data = merge_datasets(municipalities_land_data, selected_district_code)
                 num_classes = min(merged_data.shape[0], num_classes)
-                classified_data, quantiles = classify_data(merged_data, COLUMN_NAME, num_classes)
+                classified_data, quantiles = classify_data(merged_data, RATIO_COLUMN_LABEL, num_classes)
                 color_map = plt.colormaps[color_palette_name]
                 plot_map(merged_data, classified_data, quantiles, selected_district_name, num_classes, output_file,
                          color_map)
             except ValueError as e:
                 logging.error(f"Data validation error: {e}")
-
-
-shp_data = load_shp_data(SHP_FILE_PATH)
 
 
 # Function to get the list of all districts
@@ -201,7 +160,7 @@ def get_district_list():
 def process_district(district_code, num_classes=NUM_CLASSES_DEFAULT, color_palette_name=COLOR_MAP_DEFAULT):
     try:
         selected_district = shp_data[shp_data['LAU1_CODE'] == district_code].iloc[0]
-        _process_district(shp_data, selected_district, num_classes, color_palette_name)
+        _process_district(selected_district, num_classes, color_palette_name)
     except Exception as e:
         logging.error(f"Failed to process district {district_code}: {e}")
 
@@ -211,13 +170,20 @@ def get_land_data(district_code):
     try:
         municipalities = shp_data[shp_data['LAU1_CODE'] == district_code]
         municipalities_land_data = get_land_data_api(municipalities)
-        # municipalities_land_data = municipalities_land_data.replace({np.nan: None})
-        return municipalities_land_data.to_html() if municipalities_land_data is not None else "<p>No data available.</p>"
+
+        # Fetch the indicator labels
+        indicators = datacube_api.get_all_indicators()
+        # Add custom column's code and label to the indicators dictionary
+        indicators[RATIO_COLUMN_CODE] = RATIO_COLUMN_LABEL
+
+        if municipalities_land_data is not None:
+            # Rename columns using the format `{indicator_label} ({indicator_code})`
+            municipalities_land_data.rename(columns={code: f"{label} ({code})" for code, label in indicators.items()}, inplace=True)
+
+            return municipalities_land_data.to_html()
+        else:
+            return "<p>No data available.</p>"
     except Exception as e:
         error_message = f"Failed to get land data for district {district_code}: {e}"
         logging.error(error_message)
         raise Exception(error_message)  # Raise to send the error back to Flask
-
-
-if __name__ == '__main__':
-    main()

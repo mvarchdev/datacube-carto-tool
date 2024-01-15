@@ -181,7 +181,7 @@ def get_all_indicators() -> dict:
     """
     try:
         api = DatacubeAPI.get_instance()
-        indicators = api.get_table_dimensions('pl5001rr', 'pl5001rr_ukaz', 'en')
+        indicators = api.get_table_dimensions('pl5001rr', 'pl5001rr_ukaz', 'sk')
         return indicators['category']['label']
     except Exception as e:
         logging.error(f"Error fetching indicators: {e}")
@@ -215,7 +215,7 @@ def get_land_data(cities_string: str, year: str, indicators: list) -> dict:
     city_codes = city_info.get('category', {}).get('index', {})
     indicator_codes = indicator_info.get('category', {}).get('index', {})
     city_labels = city_info.get('category', {}).get('label', {})
-    indicator_labels = indicator_info.get('category', {}).get('label', {})
+    #indicator_labels = indicator_info.get('category', {}).get('label', {})
 
     if not city_codes or not indicator_codes:
         logging.error("Missing or empty indicators or city information in the response")
@@ -232,12 +232,12 @@ def get_land_data(cities_string: str, year: str, indicators: list) -> dict:
         indicator_code = list(indicator_codes.keys())[indicator_index]
 
         city_name = city_labels.get(city_code, "Unknown City")
-        indicator_name = indicator_labels.get(indicator_code, "Unknown Indicator")
+        #indicator_name = indicator_labels.get(indicator_code, "Unknown Indicator")
 
         if city_code not in data:
             data[city_code] = {'municipalityName': city_name}
 
-        data[city_code][indicator_name] = val
+        data[city_code][indicator_code] = val
 
     return data
 
@@ -273,7 +273,7 @@ def get_land_data_cities_code(cities_code_list: list) -> pd.DataFrame:
         return None
 
     df = pd.DataFrame.from_dict(cities_data, orient='index').reset_index().rename(columns={'index': 'municipalityCode'})
-    required_columns = ['municipalityName'] + list(indicators.values())
+    required_columns = ['municipalityName'] + list(indicators.keys())
     missing_columns = [col for col in required_columns if col not in df.columns]
     if missing_columns:
         logging.error(f"Missing required columns: {missing_columns}")

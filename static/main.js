@@ -1,7 +1,6 @@
 $(document).ready(function(){
-    // Show custom color input when 'Custom' is selected
     $('#colorPalette').change(function() {
-        if ($(this).val() == 'custom') {
+        if ($(this).val() === 'custom') {
             $('#customColorInput').show();
         } else {
             $('#customColorInput').hide();
@@ -9,7 +8,7 @@ $(document).ready(function(){
     });
 
     $('#generateButton').click(function(){
-        var selectedDistrict = $('#districtSelect').val();
+        var districtCode = $('#districtSelect').val();
         var numClasses = $('#numClasses').val();
         var colorPalette = $('#colorPalette').val();
 
@@ -20,13 +19,22 @@ $(document).ready(function(){
         $('#loading').show();
         $('#mapResult').empty();
         $('#data-container').empty();
+        $('#error-message').empty();
 
         $.post('/generate_map', {
-            district_code: selectedDistrict,
+            district_code: districtCode,
             num_classes: numClasses,
             color_palette_name: colorPalette
-        }, function(data){
-            checkMapStatus(selectedDistrict, numClasses, colorPalette);
+        }, function(response){
+            if (response.status === 'Accepted') {
+                checkMapStatus(districtCode, numClasses, colorPalette);
+            } else {
+                showError(response.message);
+                $('#loading').hide();
+            }
+        }).fail(function(){
+            showError('Failed to initiate map generation.');
+            $('#loading').hide();
         });
     });
 });
@@ -35,17 +43,17 @@ function showError(message) {
     $('#error-message').text(message).show();
 }
 
-function checkMapStatus(district_code, num_classes, color_palette_name) {
-    $.get('/map_status', {district_code: district_code, num_classes: num_classes, color_palette_name: color_palette_name}, function(data) {
+function checkMapStatus(districtCode, numClasses, colorPalette) {
+    $.get('/map_status', {district_code: districtCode, num_classes: numClasses, color_palette_name: colorPalette}, function(data) {
         if (data.status === 'Completed') {
-            $('#mapResult').html('<img src="/maps/' + district_code + '/'+num_classes+'/'+color_palette_name+'" alt="Generated Map" class="img-fluid">');
+            $('#mapResult').html('<img src="/maps/' + districtCode + '/' + numClasses + '/' + colorPalette + '" alt="Generated Map" class="img-fluid">');
             $('#loading').hide();
-            fetchData(district_code);
+            fetchData(districtCode);
         } else if (data.status.includes('Error')) {
             $('#loading').hide();
             showError('Error in map generation: ' + data.status);
         } else {
-            setTimeout(function() { checkMapStatus(district_code, num_classes, color_palette_name); }, 2000);
+            setTimeout(function() { checkMapStatus(districtCode, numClasses, colorPalette); }, 2000);
         }
     }).fail(function() {
         $('#loading').hide();
@@ -53,16 +61,19 @@ function checkMapStatus(district_code, num_classes, color_palette_name) {
     });
 }
 
-function fetchData(district_code) {
-    $.get('/get_data', {district_code: district_code}, function(landData) {
-        populateTable(landData);
-    }).fail(function(jqXHR, textStatus, errorThrown) {
-        console.error('Error fetching data:', textStatus, errorThrown);
+function fetchData(districtCode) {
+    $.get('/get_data', {district_code: districtCode}, function(response) {
+        if (response.status === 'Success') {
+            populateTable(response.table);
+        } else {
+            showError(response.message);
+        }
+    }).fail(function() {
+        showError('Error fetching land data.');
     });
 }
 
-function populateTable(data) {
-    $('#data-container').empty();
-    $('#data-container').html(data['table']);
+function populateTable(tableHtml) {
+    $('#data-container').html(tableHtml);
     $('#data-container table').addClass('table table-bordered table-hover');
 }
